@@ -3,8 +3,12 @@
 @{
     ViewData["Title"] = "Home page";
 }
+@* チャット画面
+   - メッセージ一覧: 初期表示はサーバー側でレンダリングし、以降は chat.js が SignalR で受信して追加する
+   - 入力欄とボタン: chat.js が SignalR の接続完了後に有効にする *@
 
 <div class="container">
+    @* メッセージ一覧 (LINE 風のふきだし。スタイルは site.css) *@
     <div class="row p-1">
         <div class="col-8">
             <div id="messagesList" class="talk1">
@@ -19,10 +23,12 @@
             <hr />
         </div>
     </div>
+    @* 入力欄 (Enter キーでも送信できる。"@Agent" を含めると AI エージェントが応答する) *@
     <div class="row p-1">
         <div class="col-2">Message</div>
         <div class="col-6"><input type="text" class="w-100" id="messageInput" maxlength="@FCAIChat.Hubs.ChatHub.MaxPromptLength" placeholder="@@Agent で AI に質問できます" /></div>
     </div>
+    @* 送信 / 全メッセージの削除 *@
     <div class="row p-1">
         <div class="col-8 text-end">
             <input type="button" id="sendButton" value="Send Message" />
@@ -32,5 +38,6 @@
 </div>
 
 @section Scripts {
+    @* SignalR クライアント本体は _Layout.cshtml で読み込んでいる *@
     <script src="~/js/chat.js" asp-append-version="true"></script>
 }

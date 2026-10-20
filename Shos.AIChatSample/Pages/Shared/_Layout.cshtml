@@ -1,4 +1,5 @@
 ﻿<!DOCTYPE html>
+@* 全ページ共通のレイアウト (ヘッダーのナビゲーション / フッター / 共通スクリプト) *@
 <html lang="ja">
 <head>
     <meta charset="utf-8" />
@@ -8,6 +9,7 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
+    @* ヘッダー: ナビゲーションとログイン状態 (_LoginPartial) *@
     <header>
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
             <div class="container">
@@ -31,6 +33,7 @@
         </nav>
     </header>
     <div class="container">
+        @* 各ページの本体がここに入る *@
         <main role="main" class="pb-3">
             @RenderBody()
         </main>
@@ -42,11 +45,14 @@
         </div>
     </footer>
 
+    @* 共通スクリプト *@
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    @* SignalR クライアント (CDN から読み込む。integrity 属性で改ざんを検知する。バージョンを上げる場合は integrity も更新すること) *@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/9.0.6/signalr.min.js" integrity="sha512-kkMt8UThSmWcdXLYFaGZ/U6vyWSNLZMUWQ5SMeF80pGqrEkH5ei9D/3MbVQpB8p7D5C3A4vlX7BpsWTT2BfB6A==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
 
+    @* ページ固有のスクリプト (各ページの @section Scripts) *@
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

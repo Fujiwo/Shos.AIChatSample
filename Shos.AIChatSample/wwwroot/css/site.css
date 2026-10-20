@@ -1,3 +1,6 @@
+/* ==== 全体 (ASP.NET Core テンプレート由来) ==== */
+
+/* 基本の文字サイズ (画面幅 768px 以上では大きくする) */
 html {
   font-size: 14px;
 }
@@ -8,10 +11,12 @@ html {
   }
 }
 
+/* フォーカス時の枠線 */
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
   box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
 }
 
+/* フッターを画面下部に置くための指定 */
 html {
   position: relative;
   min-height: 100%;
@@ -21,6 +26,7 @@ body {
   margin-bottom: 60px;
 }
 
+/* フローティングラベルのフォームのプレースホルダー */
 .form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
   color: var(--bs-secondary-color);
   text-align: end;
@@ -30,6 +36,9 @@ body {
   text-align: start;
 }
 
+/* ==== チャット画面 (Pages/Shared/_MessagePartial.cshtml) ==== */
+
+/* 送信日時 (chat.js でローカル時刻に変換して表示する) */
 .utc-time {
   font-size: 0.875rem;
   color: var(--bs-secondary-color);

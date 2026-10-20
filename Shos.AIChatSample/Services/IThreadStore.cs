@@ -2,20 +2,25 @@ using System.Text.Json;
 
 namespace FCAIChat.Services;
 
-/// <summary>Interface for storing and retrieving AgentSession data</summary>
+/// <summary>AI エージェントとの会話 (シリアライズした AgentSession) の保存先</summary>
+/// <remarks>
+/// ユーザーごとに 1 つの会話を保存する。チャットログ (Messages テーブル) とは別物で、
+/// エージェントが文脈 (前回までのやり取り) を覚えておくために使う。
+/// 永続化したい場合は、DB や分散キャッシュを使う実装に差し替える。
+/// </remarks>
 public interface IThreadStore
 {
-    /// <summary>Saves a serialized thread for a specific user</summary>
-    /// <param name="userId">The user identifier (Hub Context.UserIdentifier)</param>
-    /// <param name="serializedThread">The serialized thread as JsonElement</param>
+    /// <summary>ユーザーの会話を保存する (既にあれば上書きする)</summary>
+    /// <param name="userId">ユーザー ID (ハブの Context.UserIdentifier)</param>
+    /// <param name="serializedThread">シリアライズした会話</param>
     Task SaveThreadAsync(string userId, JsonElement serializedThread);
 
-    /// <summary>Retrieves a serialized thread for a specific user</summary>
-    /// <param name="userId">The user identifier (Hub Context.UserIdentifier)</param>
-    /// <returns>The serialized thread as JsonElement, or null if not found</returns>
+    /// <summary>ユーザーの会話を取得する</summary>
+    /// <param name="userId">ユーザー ID (ハブの Context.UserIdentifier)</param>
+    /// <returns>シリアライズした会話。保存されていなければ null</returns>
     Task<JsonElement?> GetThreadAsync(string userId);
 
-    /// <summary>Deletes a stored thread for a specific user</summary>
-    /// <param name="userId">The user identifier (Hub Context.UserIdentifier)</param>
+    /// <summary>ユーザーの会話を削除する (保存されていなければ何もしない)</summary>
+    /// <param name="userId">ユーザー ID (ハブの Context.UserIdentifier)</param>
     Task DeleteThreadAsync(string userId);
 }

@@ -1,17 +1,21 @@
 ﻿@model FCAIChat.Data.Message
+@* メッセージ 1 件分のふきだし
+   - Index.cshtml (初期表示) と Messages/RenderPartial.cshtml (受信時) の両方から使う
+   - 同じ構造を wwwroot/js/chat.js の addMessageRow でも組み立てている (変更時は両方を直すこと) *@
 
 @{
     Layout = null;
-    // 自分の発言は右、それ以外は左に表示
+    // 自分の発言は右、それ以外 (他のユーザー / AI エージェント) は左に表示
     var side = Model.UserName == User?.Identity?.Name ? "talk_right" : "talk_left";
 }
 
 <div class="talk @side">
     <p>
         <span class="talk_user">@Model.UserName</span>
-        @* 改行は CSS (white-space: pre-wrap) で表示する *@
+        @* Razor の @ 出力は HTML エンコードされるので、本文に HTML が含まれていても安全
+           改行は CSS (white-space: pre-wrap) で表示する *@
         <span class="talk_content">@Model.Content</span>
-        @* UTC の ISO-8601 で出力し、クライアント側でローカル時刻に変換する *@
+        @* UTC の ISO-8601 で出力し、クライアント側 (chat.js の toLocalTimeStringAll) でローカル時刻に変換する *@
         <time class="utc-time" datetime="@Model.CreatedAt.ToString("o")">@Model.CreatedAt.ToString("o")</time>
     </p>
 </div>

@@ -1,7 +1,9 @@
 @page
 @model FCAIChat.Pages.Messages.RenderPartialModel
 @{
+    // メッセージ 1 件分の HTML 断片だけを返すので、レイアウト (_Layout.cshtml) は使わない
     Layout = null;
 }
 
+@* Message が null の場合は OnGetAsync が 404 を返すので、ここでは null にならない *@
 <partial name="_MessagePartial" model="Model.Message!" />
