@@ -2,13 +2,9 @@
 
 namespace FCAIChat.Data;
 
-public class MessagesDbContext : DbContext
+public class MessagesDbContext(DbContextOptions<MessagesDbContext> options) : DbContext(options)
 {
     public virtual DbSet<Message> Messages { get; set; }
-
-    public MessagesDbContext(DbContextOptions<MessagesDbContext> options)
-        : base(options)
-    {}
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
