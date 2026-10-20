@@ -1,3 +1,4 @@
+using FCAIChat.AIAgents;
 using FCAIChat.Data;
 using FCAIChat.Hubs;
 using FCAIChat.Services;
@@ -15,6 +16,21 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.Requ
                 .AddEntityFrameworkStores<ApplicationDbContext>();
 builder.Services.AddRazorPages();
 builder.Services.AddSignalR();
+
+// AI エージェント
+// - 構成セクション "ChatAgent" を優先し、未設定なら従来の環境変数名から読み込む
+builder.Services.AddOptions<ChatAgentOptions>()
+                .Bind(builder.Configuration.GetSection(ChatAgentOptions.SectionName))
+                .PostConfigure<IConfiguration>((options, configuration) => {
+                    options.Endpoint    = FirstNonEmpty(options.Endpoint   , configuration["AZURE_OPENAI_ENDPOINT"]);
+                    options.ApiKey      = FirstNonEmpty(options.ApiKey     , configuration["AZURE_OPENAI_API_KEY" ]);
+                    options.BraveApiKey = FirstNonEmpty(options.BraveApiKey, configuration["BRAVE_API_KEY"        ]);
+
+                    static string FirstNonEmpty(string value, string? fallback)
+                        => string.IsNullOrEmpty(value) ? fallback ?? string.Empty : value;
+                });
+// AIAgent / IChatClient / MCP クライアントはアプリ全体で共有する (破棄はアプリ終了時に DI コンテナが行う)
+builder.Services.AddSingleton<ChatAgent, MyChatAgent>();
 
 // Register thread store service
 builder.Services.AddSingleton<IThreadStore, InMemoryThreadStore>();

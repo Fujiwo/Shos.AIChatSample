@@ -9,18 +9,18 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace FCAIChat2.Migrations
+namespace Shos.AIChatSample.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251030060054_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20261020061056_InitialCreateApplication")]
+    partial class InitialCreateApplication
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.10")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);

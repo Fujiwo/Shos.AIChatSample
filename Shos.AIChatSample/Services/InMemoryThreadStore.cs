@@ -4,29 +4,25 @@ using System.Text.Json;
 namespace FCAIChat.Services;
 
 /// <summary>In-memory implementation of IThreadStore using JSON storage</summary>
+/// <remarks>Keyed by user, so the number of entries is bounded by the number of users. Contents are lost on restart.</remarks>
 public class InMemoryThreadStore : IThreadStore
 {
     readonly ConcurrentDictionary<string, string> threadStorage = new();
 
-    public Task SaveThreadAsync(string connectionId, JsonElement serializedThread)
+    public Task SaveThreadAsync(string userId, JsonElement serializedThread)
     {
-        var json = serializedThread.GetRawText();
-        threadStorage[connectionId] = json;
+        threadStorage[userId] = serializedThread.GetRawText();
         return Task.CompletedTask;
     }
 
-    public Task<JsonElement?> GetThreadAsync(string connectionId)
-    {
-        if (threadStorage.TryGetValue(connectionId, out var json)) {
-            var jsonElement = JsonSerializer.Deserialize<JsonElement>(json);
-            return Task.FromResult<JsonElement?>(jsonElement);
-        }
-        return Task.FromResult<JsonElement?>(null);
-    }
+    public Task<JsonElement?> GetThreadAsync(string userId)
+        => Task.FromResult(threadStorage.TryGetValue(userId, out var json)
+                           ? JsonSerializer.Deserialize<JsonElement>(json)
+                           : (JsonElement?)null);
 
-    public Task DeleteThreadAsync(string connectionId)
+    public Task DeleteThreadAsync(string userId)
     {
-        threadStorage.TryRemove(connectionId, out _);
+        threadStorage.TryRemove(userId, out _);
         return Task.CompletedTask;
     }
 }

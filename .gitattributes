@@ -1,0 +1,29 @@
+# 改行コードの扱い
+# - リポジトリ内は LF で保存し、作業ツリーでは CRLF にする
+#   (Windows の Visual Studio と WSL の git が同じ作業フォルダーを共有しても、改行コードの差分が出ないようにする)
+* text=auto eol=crlf
+
+# ソースコード
+*.cs       text eol=crlf diff=csharp
+*.cshtml   text eol=crlf diff=html
+*.csproj   text eol=crlf
+*.slnx     text eol=crlf
+*.json     text eol=crlf
+*.js       text eol=crlf
+*.css      text eol=crlf diff=css
+*.map      text eol=crlf
+*.md       text eol=crlf diff=markdown
+*.txt      text eol=crlf
+
+# シェルスクリプトは LF のままにする
+*.sh       text eol=lf
+
+# バイナリ
+*.png      binary
+*.jpg      binary
+*.gif      binary
+*.ico      binary
+*.woff     binary
+*.woff2    binary
+*.ttf      binary
+*.eot      binary

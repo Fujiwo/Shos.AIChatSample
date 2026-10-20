@@ -5,100 +5,91 @@ dotnet add package Microsoft.Agents.AI.OpenAI --prerelease
 dotnet add package ModelContextProtocol --prerelease
  */
 
-// Microsoft Agent Framework 用
 // Azure OpenAI のクライアント用
 using Azure;
 using Azure.AI.OpenAI;
+// Microsoft Agent Framework 用
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 // MCP クライアントとツールを利用するための名前空間
 using ModelContextProtocol.Client;
-// Debug.WriteLine を使うための名前空間
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace FCAIChat.AIAgents
 {
-    public abstract class ChatAgent : IDisposable
+    /// <summary>AI エージェント</summary>
+    /// <remarks>
+    /// DI にシングルトンとして登録し、アプリ全体で 1 つの AIAgent / IChatClient / MCP クライアントを共有する。
+    /// 会話の状態は AgentSession が持つので、呼び出し側がシリアライズしたセッションを受け渡す。
+    /// </remarks>
+    public abstract class ChatAgent : IAsyncDisposable
     {
-        IEnumerable<McpClient> mcpClients           = [];
-        bool                   isFirst              = true;
+        readonly SemaphoreSlim startLock  = new(1, 1);
+        IEnumerable<McpClient> mcpClients = [];
+        AIAgent?               agent      = null;
 
-        JsonElement?           pendingThreadRestore = null;
-        bool                   wasThreadRestored    = false;
+        protected ILogger Logger { get; }
 
-        // AIAgent を公開してスレッドのシリアライズに使用
-        public AIAgent?           Agent        { get; private set; }
-        // 複数ターンに対応するために AgentSession (会話の状態・履歴などを管理) を作成
-        public AgentSession?      Session      { get; set; } = null;
         // エージェント名と指示
         public abstract string    Name         { get; }
         protected abstract string Instructions { get; }
-        // エージェントのシステムロールに与える文脈的な指示
-        protected abstract string SystemPrompt { get; }
 
-        public async Task<JsonElement?> SerializeSessionAsync()
-            => Agent is null || Session is null
-               ? null
-               : await Agent.SerializeSessionAsync(Session);
+        protected ChatAgent(ILogger logger) => Logger = logger;
 
-        public async Task<bool> DeserializeSessionAsync(JsonElement? jsonElement)
-        {
-            if (Agent is not null && jsonElement.HasValue) {
-                Session = await Agent.DeserializeSessionAsync(jsonElement.Value);
-                return true;
-            }
-            return false;
-        }
-
-        public async void Dispose()
+        public async ValueTask DisposeAsync()
         {
             // 終了処理 MCP クライアントを破棄
             foreach (var mcpClient in mcpClients)
                 await mcpClient.DisposeAsync();
+            mcpClients = [];
+            startLock.Dispose();
+            GC.SuppressFinalize(this);
         }
 
-        public async Task<string> GetResponseAsync(string userPrompt)
+        /// <summary>ユーザープロンプトに対する応答を取得する</summary>
+        /// <param name="userPrompt">ユーザープロンプト</param>
+        /// <param name="serializedSession">前回までの会話 (なければ null)</param>
+        /// <returns>応答と、更新後の会話 (失敗時は null)</returns>
+        public async Task<(string response, JsonElement? session)> GetResponseAsync(string userPrompt, JsonElement? serializedSession)
         {
-            await Start();
-            // ユーザープロンプトをエージェントスレッドに送信し、応答を取得
-            return await RunAgentAsync(ToUserMessage(userPrompt)) ?? string.Empty;
-
-            static ChatMessage ToUserMessage(string userPrompt) => new ChatMessage(ChatRole.User, userPrompt);
+            try {
+                var agent   = await GetAgentAsync();
+                var session = await GetSessionAsync(agent, serializedSession);
+                // ユーザープロンプトをエージェントセッションに送信し、応答を取得
+                var response = await agent.RunAsync(new ChatMessage(ChatRole.User, userPrompt), session);
+                return (response?.Text ?? string.Empty, await agent.SerializeSessionAsync(session));
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Error running agent {AgentName}", Name);
+                return ("(エラーが発生したため応答できませんでした)", null);
+            }
         }
 
         // ファクトリ関数
         protected abstract IChatClient GetChatClient();
-        
-        protected virtual async Task<(IEnumerable<McpClient>, IEnumerable<McpClientTool>)> GetMcpToolsAsync()
+
+        // MCP サーバーのツールを取得
+        // - 戻り値の McpClient はこのエージェントの破棄時に DisposeAsync() される
+        protected virtual Task<(IEnumerable<McpClient>, IEnumerable<McpClientTool>)> GetMcpToolsAsync()
+            => Task.FromResult<(IEnumerable<McpClient>, IEnumerable<McpClientTool>)>(([], []));
+
+        // 初回のみエージェントを生成 (複数の接続から同時に呼ばれても 1 回だけ生成する)
+        async Task<AIAgent> GetAgentAsync()
         {
-            await Task.Delay(0);
-            return ([], []);
-        }
+            if (agent is not null)
+                return agent;
 
-        async Task Start()
-        {
-            if (!isFirst)
-                return;
+            await startLock.WaitAsync();
+            try {
+                if (agent is not null)
+                    return agent;
 
-            var (mcpClients, tools) = await GetMcpToolsAsync();
-            this.mcpClients = mcpClients;
-
-            Agent = CreateAgent(tools);
-            
-            // Restore thread if there's a pending restoration, otherwise create new
-            if (pendingThreadRestore.HasValue) {
-                Session = await Agent.DeserializeSessionAsync(pendingThreadRestore.Value);
-                pendingThreadRestore = null;
-            } else if (Session is null) {
-                Session = await Agent.CreateSessionAsync();
+                var (mcpClients, tools) = await GetMcpToolsAsync();
+                this.mcpClients = mcpClients;
+                return agent = CreateAgent(tools);
+            } finally {
+                startLock.Release();
             }
-
-            // システムメッセージを最初に送信 (only for new threads)
-            if (!wasThreadRestored)
-                await SendSystemMessageAsync();
-
-            isFirst = false;
 
             AIAgent CreateAgent(IEnumerable<McpClientTool> tools)
                 => new ChatClientAgent(
@@ -108,101 +99,63 @@ namespace FCAIChat.AIAgents
                     description : null,
                     tools       : tools.Any() ? tools.Cast<AITool>().ToList() : null
                 );
-
-            async Task SendSystemMessageAsync()
-            {
-                // システムメッセージを作成して送信
-                ChatMessage systemMessage = new(ChatRole.System, SystemPrompt);
-                if (Agent is not null)
-                    await Agent.RunAsync(systemMessage, Session);
-            }
         }
 
-        /// <summary>Restores a thread from serialized state. Should be called before Start().</summary>
-        public void RestoreThread(JsonElement serializedThread)
+        // 保存済みの会話を復元する。なければ (または復元に失敗したら) 新しく作る
+        async Task<AgentSession> GetSessionAsync(AIAgent agent, JsonElement? serializedSession)
         {
-            pendingThreadRestore = serializedThread;
-            wasThreadRestored = true;
-        }
-
-        // エージェントに ChatMessage を投げて応答を取得
-        async Task<string> RunAgentAsync(ChatMessage chatMessage)
-        {
-            if (Agent is null)
-                return string.Empty;
-
-            try {
-                var response = await Agent.RunAsync(chatMessage, Session);
-                return response?.Text ?? string.Empty;
-            } catch (Exception ex) {
-                Debug.WriteLine($"Error running agent: {ex.Message}");
-                return "……";
+            if (serializedSession.HasValue) {
+                try {
+                    return await agent.DeserializeSessionAsync(serializedSession.Value);
+                } catch (Exception ex) {
+                    Logger.LogWarning(ex, "Session restoration failed. A new session will be created.");
+                }
             }
+            return await agent.CreateSessionAsync();
         }
     }
 
     public class MyChatAgent : ChatAgent
     {
+        readonly ChatAgentOptions options;
+
         // エージェント名と指示
-        public override string    Name         => "Agent";   
-        protected override string Instructions => "あなたはAIエージェントです";
-        // エージェントのシステムロールに与える文脈的な指示
-        protected override string SystemPrompt => "あなたはAIエージェントです";
+        public override string    Name         => "Agent";
+        protected override string Instructions => """
+            あなたはグループチャットに参加している AI エージェント「Agent」です。
+            参加者の発言は「名前: 本文」の形式で届きます。発言者を区別して応答してください。
+            必要に応じて Web 検索ツールを使い、日本語で簡潔に答えてください。
+            """;
+
+        public MyChatAgent(IOptions<ChatAgentOptions> options, ILogger<MyChatAgent> logger)
+            : base(logger)
+            => this.options = options.Value;
 
         protected override IChatClient GetChatClient()
         {
-            // 使用するモデルを指定
-            const string deploymentName = "gpt-5-mini";
-            var azureOpenAIEndPoint     = GetEndPoint();
-            var openAIApiKey            = GetKey();
-            var credential              = new AzureKeyCredential(openAIApiKey);
+            var azureOpenAIEndPoint = GetRequired(options.Endpoint, "AZURE_OPENAI_ENDPOINT");
+            var openAIApiKey        = GetRequired(options.ApiKey  , "AZURE_OPENAI_API_KEY" );
+            var credential          = new AzureKeyCredential(openAIApiKey);
 
             var azureOpenAIClient = new AzureOpenAIClient(new Uri(azureOpenAIEndPoint), credential);
             // IChatClient インターフェイスに変換して、ツール呼び出しを有効にしてビルド
-            IChatClient chatClient = azureOpenAIClient.GetChatClient(deploymentName)
+            IChatClient chatClient = azureOpenAIClient.GetChatClient(options.DeploymentName)
                                                       .AsIChatClient()
                                                       .AsBuilder()
                                                       .UseFunctionInvocation() // ツール呼び出しを使う
                                                       .Build();
             return chatClient;
-
-            static string GetEndPoint()
-            {
-                const string AzureOpenAIEndpointEnvironmentVariable = "AZURE_OPENAI_ENDPOINT";
-                var azureOpenAIEndPoint = Environment.GetEnvironmentVariable(AzureOpenAIEndpointEnvironmentVariable);
-                if (string.IsNullOrEmpty(azureOpenAIEndPoint))
-                    throw new InvalidOperationException($"Please set the {AzureOpenAIEndpointEnvironmentVariable} environment variable.");
-                return azureOpenAIEndPoint;
-
-                // 上記のように、セキュリティ上 Azure OpenAI のエンドポイントは環境変数から取得するのが望ましいが、ここではハードコードする
-                // 例: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
-                //return @"[Azure OpenAI のエンドポイント]";
-            }
-
-            static string GetKey()
-            {
-                const string AzureOpenAIApiKeyEnvironmentVariable = "AZURE_OPENAI_API_KEY";
-                var openAIApiKey = Environment.GetEnvironmentVariable(AzureOpenAIApiKeyEnvironmentVariable);
-                if (string.IsNullOrEmpty(openAIApiKey))
-                    throw new InvalidOperationException($"Please set the {AzureOpenAIApiKeyEnvironmentVariable} environment variable.");
-                return openAIApiKey!;
-
-                // 上記のように、セキュリティ上 Azure OpenAI の APIキーは環境変数から取得するのが望ましいが、ここではハードコードする
-                //例: https://your-resource-name.openai.azure.com/
-                //return @"[Azure OpenAI の APIキー]";
-            }
         }
 
         // MCP サーバーのツールを取得
         // - McpClient に接続し、ツール一覧を取得して返す
-        // - 戻り値は (IEnumerable<McpClient>, IEnumerable<McpClientTool>) で、終了時にすべての McpClient について DisposeAsync() を呼ぶ必要がある
         protected override async Task<(IEnumerable<McpClient>, IEnumerable<McpClientTool>)> GetMcpToolsAsync()
         {
             IClientTransport clientTransport = GetBraveSearchToolClientTransport();
             McpClient client = await McpClient.CreateAsync(clientTransport);
             IList<McpClientTool> tools = await client.ListToolsAsync();
             foreach (var tool in tools)
-                Debug.WriteLine($"{tool.Name} ({tool.Description})");
+                Logger.LogDebug("MCP tool: {ToolName} ({ToolDescription})", tool.Name, tool.Description);
 
             return ([client], tools);
 
@@ -215,29 +168,22 @@ namespace FCAIChat.AIAgents
             //    });
 
             // BraveSearch ツールを使うためのクライアント生成
-            static IClientTransport GetBraveSearchToolClientTransport()
-            {
-                return new StdioClientTransport(new() {
-                            Name                 = "braveSearch",
-                            Command              = "npx",
-                            Arguments            = ["-y", "@modelcontextprotocol/server-brave-search"],
-                            EnvironmentVariables = new Dictionary<string, string?> {
-                                ["BRAVE_API_KEY"] = GetKey()
-                            }
-                       });
-
-                static string GetKey()
-                {
-                    const string braveApiKeyEnvironmentVariable = "BRAVE_API_KEY";
-                    var braveApiKey = Environment.GetEnvironmentVariable(braveApiKeyEnvironmentVariable);
-                    if (string.IsNullOrEmpty(braveApiKey))
-                        throw new InvalidOperationException($"Please set the {braveApiKeyEnvironmentVariable} environment variable.");
-                    return braveApiKey;
-
-                    // 上記のように、セキュリティ上 Brave の APIキーは環境変数から取得するのが望ましいが、ここではハードコードする
-                    //return @"[Brave の APIキー]";
-                }
-            }
+            // - npx -y で取得されるパッケージはバージョンを固定する (サプライチェーン対策)
+            IClientTransport GetBraveSearchToolClientTransport()
+                => new StdioClientTransport(new() {
+                       Name                 = "braveSearch",
+                       Command              = "npx",
+                       Arguments            = ["-y", "@modelcontextprotocol/server-brave-search@0.6.2"],
+                       EnvironmentVariables = new Dictionary<string, string?> {
+                           ["BRAVE_API_KEY"] = GetRequired(options.BraveApiKey, "BRAVE_API_KEY")
+                       }
+                   });
         }
+
+        // セキュリティ上、エンドポイントや API キーはソースコードに書かず、構成 (User Secrets / 環境変数など) から取得する
+        static string GetRequired(string value, string environmentVariable)
+            => string.IsNullOrEmpty(value)
+               ? throw new InvalidOperationException($"Please set the {environmentVariable} environment variable (or {ChatAgentOptions.SectionName} configuration).")
+               : value;
     }
 }

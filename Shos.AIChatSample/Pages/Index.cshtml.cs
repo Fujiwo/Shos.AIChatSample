@@ -1,34 +1,30 @@
 using FCAIChat.Data;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
 namespace FCAIChat.Pages
 {
+    [Authorize]
     public class IndexModel : PageModel
     {
-        public IEnumerable<Message> Messages { get; private set; }
+        // 初期表示するメッセージの最大件数 (新しいものから)
+        const int maxMessageCount = 200;
 
-        readonly MessagesDbContext   _dbContext;
-        readonly ILogger<IndexModel> _logger;
+        readonly MessagesDbContext dbContext;
 
-        public IndexModel(MessagesDbContext dbContext, ILogger<IndexModel> logger)
-        {
-            _dbContext = dbContext;
-            Messages = dbContext.Messages.OrderBy(message => message.CreatedAt)
-                                         .ToListAsync().Result
-                                         .Select(message => new Message {
-                                                                Id        = message.Id,
-                                                                UserName  = message.UserName,
-                                                                Content   = message.Content,
-                                                                CreatedAt = DateTime.SpecifyKind(message.CreatedAt, DateTimeKind.Utc)
-                                                            })
-                                         .ToList();
+        public IReadOnlyList<Message> Messages { get; private set; } = [];
 
-            _logger = logger;
-        }
+        public IndexModel(MessagesDbContext dbContext) => this.dbContext = dbContext;
 
-        public void OnGet()
-        {}
+        public async Task OnGetAsync()
+            => Messages = (await dbContext.Messages.AsNoTracking()
+                                                   .OrderByDescending(message => message.CreatedAt)
+                                                   .ThenByDescending (message => message.Id       )
+                                                   .Take(maxMessageCount)
+                                                   .ToListAsync())
+                          .AsEnumerable()
+                          .Reverse()
+                          .ToList();
     }
 }
