@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-ASP.NET Core Razor Pages app (.NET 10) — a SignalR group chat in which an AI agent (Microsoft Agent Framework + Azure OpenAI, with MCP tools) replies when mentioned as `@Agent`. The C# root namespace is `FCAIChat` (not the project name); EF migrations are generated into `Shos.AIChatSample.Migrations*`. There are no test projects.
+ASP.NET Core Razor Pages app (.NET 10) — a SignalR group chat in which an AI agent (Microsoft Agent Framework + Azure OpenAI, with MCP tools) replies when mentioned as `@Agent`. The C# root namespace is `FCAIChat` (not the project name); EF migrations are generated into `Shos.AIChatSample.Migrations*`. Tests live in `Shos.AIChatSample.Tests` (xUnit v3).
 
 ## Commands
 
@@ -17,6 +17,15 @@ dotnet ef migrations add <Name> --project Shos.AIChatSample --context MessagesDb
 ```
 
 Identity migrations live in `Migrations/`, message migrations in `Migrations/MessagesDb/`.
+
+Tests (xUnit v3 on Microsoft Testing Platform, enabled via `global.json`; no SQL Server / Azure OpenAI / Node needed):
+
+```bash
+dotnet test --project Shos.AIChatSample.Tests
+```
+
+- Unit tests use SQLite in-memory (`TestDoubles/SqliteMessagesDb`) for `MessagesDbContext`, and `TestChatAgent` + `FakeChatClient` instead of Azure OpenAI / MCP.
+- `Integration/` boots the real `Program` via `WebApplicationFactory` in the `Testing` environment (no User Secrets); only tests that do not touch the DB belong there.
 
 ## Required environment
 

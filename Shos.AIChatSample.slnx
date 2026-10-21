@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="Shos.AIChatSample.Tests/Shos.AIChatSample.Tests.csproj" />
   <Project Path="Shos.AIChatSample/Shos.AIChatSample.csproj" />
 </Solution>
